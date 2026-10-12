@@ -1,0 +1,33 @@
+[package]
+name = "nexus-gui"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "nexuslab"
+path = "src/main.rs"
+
+[dependencies]
+nexus-core.workspace = true
+nexus-script.workspace = true
+nexus-hardware.workspace = true
+nexus-cli.workspace = true
+eframe.workspace = true
+egui_plot.workspace = true
+ringbuf.workspace = true
+image = { version = "0.25", default-features = false, features = ["png"] }
+# eframe disables wgpu defaults; explicitly compile the native Windows backend.
+wgpu = { version = "24", default-features = false, features = ["dx12"] }
+rfd = "0.15.4"
+serde.workspace = true
+serde_json.workspace = true
+resvg = "0.45.1"
+png = "0.17"
+
+[dev-dependencies]
+tempfile = "3"
+
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.59", features = ["Win32_System_Console", "Win32_Graphics_Gdi", "Win32_System_ProcessStatus", "Win32_System_Threading", "Win32_System_Diagnostics_ToolHelp"] }

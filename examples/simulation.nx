@@ -1,0 +1,7 @@
+% A hardware-free numerical experiment.
+t = 0:0.0000078125:0.01;
+sig1 = 2.5 * sin(2 * pi * 1000 * t);
+noisy = sig1 + 0.05 * randn(size(t));
+fft_result = fft(noisy);
+rms = sqrt(mean(noisy .* noisy));
+plot(t, noisy)

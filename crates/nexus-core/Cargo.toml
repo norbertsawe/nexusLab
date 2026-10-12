@@ -1,0 +1,13 @@
+[package]
+name = "nexus-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+serde.workspace = true
+thiserror.workspace = true
+ndarray.workspace = true
+nalgebra.workspace = true
+rustfft.workspace = true
+ringbuf.workspace = true

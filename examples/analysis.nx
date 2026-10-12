@@ -1,0 +1,16 @@
+% Regression and descriptive statistics on measured data
+x = [0, 1, 2, 3, 4, 5];
+y = [1.2, 2.9, 5.1, 6.8, 9.2, 10.9];
+coefficients = polyfit(x, y, 1);
+fitted = polyval(coefficients, x);
+residuals = y - fitted;
+rmse = sqrt(mean(residuals .* residuals));
+disp(coefficients);
+disp(rmse);
+figure(1);
+scatter(x, y);
+hold('on');
+plot(x, fitted);
+title('Measured data and linear fit');
+xlabel('Time (s)');
+ylabel('Measurement');

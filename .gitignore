@@ -1,0 +1,13 @@
+/target/
+/dist/
+/artifacts/
+/.vs/
+/*.nxw
+/*.csv
+*.pdb
+*.user
+*.suo
+*.log
+Thumbs.db
+Desktop.ini
+.DS_Store

@@ -1,0 +1,37 @@
+[workspace]
+members = ["crates/nexus-core", "crates/nexus-script", "crates/nexus-hardware", "crates/nexus-gui", "crates/nexus-cli"]
+default-members = ["crates/nexus-gui"]
+resolver = "2"
+
+[workspace.package]
+version = "0.3.0"
+edition = "2021"
+license = "MIT"
+rust-version = "1.88"
+
+[workspace.dependencies]
+nexus-core = { path = "crates/nexus-core" }
+nexus-script = { path = "crates/nexus-script" }
+nexus-hardware = { path = "crates/nexus-hardware" }
+nexus-cli = { path = "crates/nexus-cli" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+ndarray = "0.16"
+nalgebra = "0.33"
+rustfft = "6"
+ringbuf = "0.4"
+rhai = { version = "1", features = ["sync"] }
+serialport = { version = "4", default-features = false }
+nusb = "0.1.14"
+pollster = "0.4"
+eframe = { version = "0.31.1", default-features = false, features = ["default_fonts", "wgpu", "x11", "wayland"] }
+egui_plot = "0.32.1"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "sync"] }
+axum = "0.8"
+clap = { version = "4", features = ["derive"] }
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = true
