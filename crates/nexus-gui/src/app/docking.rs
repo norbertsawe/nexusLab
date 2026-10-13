@@ -10,9 +10,10 @@ pub(super) enum Panel {
     Workspace,
     Files,
     Hardware,
+    Tutorial,
 }
 impl Panel {
-    pub fn all() -> [Self; 8] {
+    pub fn all() -> [Self; 9] {
         [
             Self::Editor,
             Self::Command,
@@ -22,6 +23,7 @@ impl Panel {
             Self::Workspace,
             Self::Files,
             Self::Hardware,
+            Self::Tutorial,
         ]
     }
     pub fn title(self) -> &'static str {
@@ -34,6 +36,7 @@ impl Panel {
             Self::Workspace => "Workspace",
             Self::Files => "Current Folder",
             Self::Hardware => "Hardware Manager",
+            Self::Tutorial => "Tutorial",
         }
     }
     pub fn key(self) -> &'static str {
@@ -46,6 +49,7 @@ impl Panel {
             Self::Workspace => "workspace",
             Self::Files => "files",
             Self::Hardware => "hardware",
+            Self::Tutorial => "tutorial",
         }
     }
     pub fn from_key(key: &str) -> Option<Self> {
@@ -58,6 +62,7 @@ impl Panel {
             View::Figures => Some(Self::Figures),
             View::Variables => Some(Self::Variables),
             View::Scope => Some(Self::Scope),
+            View::Tutorial => Some(Self::Tutorial),
             View::Help | View::Welcome => None,
         }
     }
@@ -94,6 +99,7 @@ impl NexusApp {
             Panel::Variables => self.set_view(View::Variables),
             Panel::Command => self.set_view(View::Command),
             Panel::Scope => self.set_view(View::Scope),
+            Panel::Tutorial => self.set_view(View::Tutorial),
             Panel::Hardware => self.hardware_visible = true,
             Panel::Files => self.hardware_visible = false,
             Panel::Workspace => {}
@@ -207,6 +213,7 @@ impl NexusApp {
             ctx.show_viewport_immediate(
                 panel.id(),
                 egui::ViewportBuilder::default()
+                    .with_icon(crate::branding::window_icon())
                     .with_title(format!("NexusLab — {}", panel.title()))
                     .with_inner_size(panel.size())
                     .with_min_inner_size([320.0, 280.0]),
@@ -271,6 +278,7 @@ impl NexusApp {
             Panel::Workspace => self.inspector_ui(ui),
             Panel::Files => self.browser_ui(ui),
             Panel::Hardware => self.hardware_ui(ui),
+            Panel::Tutorial => self.academy_ui(ui),
         }
     }
 }

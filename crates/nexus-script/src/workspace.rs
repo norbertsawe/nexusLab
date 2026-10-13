@@ -32,7 +32,7 @@ pub fn validate(variables: &BTreeMap<String, Value>) -> Result<(), ScriptError> 
                     )));
                 }
             }
-            Value::Complex(v) => {
+            Value::Complex(v) | Value::ComplexColumn(v) => {
                 if v.len() > 1_000_000 || !v.iter().flatten().all(|v| v.is_finite()) {
                     return Err(ScriptError::Eval(format!("invalid complex array: {name}")));
                 }
@@ -176,7 +176,7 @@ pub fn export_csv(path: &Path, value: &Value) -> Result<(), ScriptError> {
                     .map_err(io_error)?;
             }
         }
-        Value::Complex(v) => {
+        Value::Complex(v) | Value::ComplexColumn(v) => {
             writer
                 .write_record(["real", "imaginary"])
                 .map_err(io_error)?;
@@ -203,7 +203,13 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let m = parse_csv(b"time,value\r\n0,1.25\r\n1,2.5\r\n").unwrap();
         assert_eq!((m.rows, m.cols), (2, 2));
-        let variables = BTreeMap::from([("measurements".into(), Value::Real(m.clone()))]);
+        let variables = BTreeMap::from([
+            ("measurements".into(), Value::Real(m.clone())),
+            (
+                "eigenvalues".into(),
+                Value::ComplexColumn(vec![[0., 1.], [0., -1.]]),
+            ),
+        ]);
         let path = dir.path().join("session.nxw");
         save(&path, &variables).unwrap();
         assert_eq!(load(&path).unwrap(), variables);

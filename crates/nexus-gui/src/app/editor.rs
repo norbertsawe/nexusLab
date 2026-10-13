@@ -1,6 +1,11 @@
 use super::*;
 
-fn highlight(source: &str, rhai: bool, dark: bool, font_size: f32) -> egui::text::LayoutJob {
+pub(super) fn highlight(
+    source: &str,
+    rhai: bool,
+    dark: bool,
+    font_size: f32,
+) -> egui::text::LayoutJob {
     let mut job = egui::text::LayoutJob::default();
     let chars: Vec<_> = source.char_indices().collect();
     let mut i = 0;
@@ -21,7 +26,17 @@ fn highlight(source: &str, rhai: bool, dark: bool, font_size: f32) -> egui::text
             while i < chars.len() && chars[i].1 != '\n' {
                 i += 1;
             }
-        } else if c == '"' || c == '\'' {
+        } else if c == '"'
+            || c == '\''
+                && (rhai
+                    || !chars[..i]
+                        .iter()
+                        .rev()
+                        .find(|(_, c)| !c.is_whitespace())
+                        .is_some_and(|(_, c)| {
+                            c.is_ascii_alphanumeric() || matches!(c, ')' | ']' | '\'')
+                        }))
+        {
             color = if dark {
                 egui::Color32::from_rgb(206, 145, 120)
             } else {

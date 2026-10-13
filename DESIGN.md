@@ -55,7 +55,27 @@ scalar broadcasting are distinct; `.*` is elementwise. Scalar indexing and
 reshape use MATLAB-style column-major order over the row-major storage.
 Newlines preserve displayed output while semicolons suppress it. Strings use
 single or double quotes; postfix apostrophes transpose matrices. Polynomial
-fitting uses an SVD least-squares solve with a maximum degree of 16.
+fitting uses a scaled, bounded SVD least-squares solve with a maximum degree
+of 16. Schur decomposition provides real/complex eigenvalues; scaled SVD
+provides pseudoinverses and rectangular least-squares solutions. Decompositions
+reject nonfinite inputs and have dimension and iteration limits.
+
+Slicing and indexed assignment share a checked selection implementation.
+`end` uses a restored subscript context, and `:` selects an entire dimension.
+Selections preserve MATLAB-style column-major order. Indexed assignment stages
+the full updated array before committing, so invalid dimensions or indices
+cannot partially replace values. Complex column vectors extend the serialized
+value model for eigenvalues without changing existing complex FFT rows.
+
+NexusAcademy is a detachable, closable panel with a resizable contents tree,
+lesson/reference views, and themed code blocks using the editor highlighter.
+Try it submits the example through the existing command execution path, sharing
+history, cancellation, worker execution, and workspace state. Every example is
+tested independently and in sequence in a shared Session.
+
+The canonical app mark is `assets/nexuslab.svg`. A Rust example regenerates
+PNG and seven-size ICO assets; Windows build resources embed the ICO and
+version metadata. Main and detached viewports share the cached native icon.
 
 Figures are backend data models, independent of egui. Sessions support at most
 16 numbered figures, 32 series per figure and four million total points.

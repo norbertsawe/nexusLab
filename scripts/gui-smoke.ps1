@@ -43,7 +43,7 @@ New-Item -ItemType Directory -Path $testDirectory | Out-Null
 $env:NEXUSLAB_NO_RESTORE = '1'
 $env:NEXUSLAB_CAPTURE = Join-Path $root 'artifacts\windows-workbench.png'
 $priorDpi = [NexusGuiSmoke]::SetThreadDpiAwarenessContext([IntPtr]::new(-4))
-$gui = Start-Process -FilePath $Binary -WorkingDirectory $root -RedirectStandardError (Join-Path $testDirectory 'gui.log') -PassThru
+$gui = Start-Process -FilePath $Binary -WorkingDirectory $root -WindowStyle Hidden -RedirectStandardError (Join-Path $testDirectory 'gui.log') -PassThru
 function Get-GuiWindow([string]$Pattern) {
     foreach ($entry in [NexusGuiSmoke]::Windows([uint32]$gui.Id).GetEnumerator()) { if ($entry.Value -like $Pattern) { return $entry.Key } }
     return [IntPtr]::Zero

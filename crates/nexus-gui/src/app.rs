@@ -16,6 +16,7 @@ use std::{
 };
 
 mod about;
+mod academy;
 mod completion;
 mod docking;
 mod editor;
@@ -39,6 +40,7 @@ enum View {
     Scope,
     Command,
     Help,
+    Tutorial,
 }
 enum Confirm {
     CloseTab(usize),
@@ -102,6 +104,7 @@ pub struct NexusApp {
     spectrum: Vec<[f64; 2]>,
     spectrum_at: Instant,
     view: View,
+    academy: academy::Academy,
     documents: Documents,
     directory: PathBuf,
     directory_input: String,
@@ -173,6 +176,7 @@ impl NexusApp {
                 "figures" => View::Figures,
                 "variables" => View::Variables,
                 "scope" => View::Scope,
+                "tutorial" => View::Tutorial,
                 "welcome" => View::Welcome,
                 _ => View::Workbench,
             })
@@ -273,6 +277,7 @@ impl NexusApp {
             spectrum: Vec::new(),
             spectrum_at: Instant::now(),
             view,
+            academy: academy::Academy::default(),
             documents,
             directory_input: directory.to_string_lossy().into_owned(),
             directory,
@@ -721,6 +726,7 @@ impl eframe::App for NexusApp {
                     View::Variables => self.variables_ui(ui),
                     View::Command => self.command_ui(ui),
                     View::Help => self.help_ui(ui),
+                    View::Tutorial => self.academy_ui(ui),
                     View::Scope => {}
                 });
         }

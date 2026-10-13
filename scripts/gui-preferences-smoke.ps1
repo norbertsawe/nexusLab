@@ -20,6 +20,7 @@ public static class NexusGuiSmoke {
   [DllImport("user32.dll")] public static extern uint GetDpiForWindow(IntPtr hwnd);
   [DllImport("user32.dll")] public static extern bool GetClientRect(IntPtr hwnd,out Rect rect);
   [DllImport("user32.dll")] public static extern bool ClientToScreen(IntPtr hwnd,ref Point point);
+  [DllImport("user32.dll")] public static extern bool SetWindowPos(IntPtr hwnd,IntPtr insert,int x,int y,int w,int h,uint flags);
   [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hwnd);
   [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
   [DllImport("kernel32.dll")] public static extern uint GetCurrentThreadId();
@@ -44,13 +45,15 @@ Remove-Item Env:NEXUSLAB_NO_RESTORE -ErrorAction SilentlyContinue
 $env:NEXUSLAB_STATE_DIR = $testDirectory
 $env:NEXUSLAB_CAPTURE = Join-Path $root 'artifacts\windows-workbench.png'
 $priorDpi = [NexusGuiSmoke]::SetThreadDpiAwarenessContext([IntPtr]::new(-4))
-$gui = Start-Process -FilePath $Binary -WorkingDirectory $root -RedirectStandardError (Join-Path $testDirectory 'gui.log') -PassThru
+$gui = Start-Process -FilePath $Binary -WorkingDirectory $root -WindowStyle Hidden -RedirectStandardError (Join-Path $testDirectory 'gui.log') -PassThru
 function Get-GuiWindow([string]$Pattern) {
     foreach ($entry in [NexusGuiSmoke]::Windows([uint32]$gui.Id).GetEnumerator()) { if ($entry.Value -like $Pattern) { return $entry.Key } }
     return [IntPtr]::Zero
 }
 function Focus-Window([IntPtr]$Handle) {
     if ($Handle -eq [IntPtr]::Zero) { throw 'Expected native window was not found' }
+    [NexusGuiSmoke]::ShowWindow($Handle,5) | Out-Null
+    [NexusGuiSmoke]::SetWindowPos($Handle,[IntPtr]::new(-1),0,0,0,0,3) | Out-Null
     $currentThread = [NexusGuiSmoke]::GetCurrentThreadId()
     $ownerPid = [uint32]0
     $foregroundThread = [NexusGuiSmoke]::GetWindowThreadProcessId([NexusGuiSmoke]::GetForegroundWindow(),[ref]$ownerPid)
@@ -62,6 +65,7 @@ function Focus-Window([IntPtr]$Handle) {
         if ($attached) { [NexusGuiSmoke]::AttachThreadInput($currentThread,$foregroundThread,$false) | Out-Null }
     }
     Start-Sleep -Milliseconds 150
+    if ([NexusGuiSmoke]::GetForegroundWindow() -ne $Handle) { throw 'Test window did not receive focus; desktop verification stopped' }
 }
 function Click-Point([IntPtr]$Handle,[double]$X,[double]$Y) {
     [NexusGuiSmoke]::SetThreadDpiAwarenessContext([IntPtr]::new(-4)) | Out-Null
@@ -167,8 +171,8 @@ try {
     Start-Sleep -Seconds 3
     $mainWindow = Get-GuiWindow 'NexusLab v*'
     Focus-Window $mainWindow
-    Click-Point $mainWindow 190 52
-    Click-Point $mainWindow 190 52
+    Click-Point $mainWindow 120 52
+    Click-Point $mainWindow 120 52
     Start-Sleep -Milliseconds 600
     $editorWindow = Detach-NativePanel $mainWindow 325 118 'NexusLab*Script Editor'
     if ($editorWindow -eq [IntPtr]::Zero) { throw 'Editor did not detach before theme change' }
@@ -217,9 +221,9 @@ try {
     Save-Capture $mainWindow 'welcome-dark.png'
     Close-TestGui
     $recovery = Get-Content -LiteralPath (Join-Path $testDirectory 'recovery.json') -Raw | ConvertFrom-Json
-    if ($recovery.closed.Count -ne 8 -or $recovery.detached.Count -ne 0 -or $recovery.view -ne 'welcome') { throw 'Closed panel layout was not persisted' }
+    if ($recovery.closed.Count -ne 9 -or $recovery.detached.Count -ne 0 -or $recovery.view -ne 'welcome') { throw 'Closed panel layout was not persisted' }
     Copy-Item -LiteralPath (Join-Path $testDirectory 'recovery.json') -Destination (Join-Path $testDirectory 'closed-layout.json')
-    $gui = Start-Process -FilePath $Binary -WorkingDirectory $root -RedirectStandardError (Join-Path $testDirectory 'restart.log') -PassThru
+    $gui = Start-Process -FilePath $Binary -WorkingDirectory $root -WindowStyle Hidden -RedirectStandardError (Join-Path $testDirectory 'restart.log') -PassThru
     Start-Sleep -Seconds 3
     $mainWindow = Get-GuiWindow 'NexusLab v*'
     Save-Capture $mainWindow 'welcome-dark-restored.png'

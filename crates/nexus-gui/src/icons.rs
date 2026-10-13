@@ -1,8 +1,12 @@
 use eframe::egui::{self, Color32, Stroke};
 #[derive(Clone, Copy)]
 pub enum Icon {
+    NewFile,
+    Copy,
+    Book,
     Close,
     Pause,
+    Stop,
     PopOut,
     Dock,
     Save,
@@ -19,14 +23,14 @@ pub enum Icon {
     Search,
 }
 pub fn button(ui: &mut egui::Ui, icon: Icon, tooltip: &str, enabled: bool) -> egui::Response {
-    let (rect, response) = ui.allocate_exact_size(
-        egui::vec2(24.0, 24.0),
-        if enabled {
-            egui::Sense::click()
-        } else {
-            egui::Sense::hover()
-        },
+    let response = ui.add_enabled(
+        enabled,
+        egui::Button::new("")
+            .min_size(egui::vec2(24.0, 24.0))
+            .frame(false),
     );
+    response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, enabled, tooltip));
+    let rect = response.rect;
     let visuals = ui.style().interact(&response);
     if response.hovered() && enabled {
         ui.painter().rect(
@@ -58,6 +62,21 @@ pub fn button(ui: &mut egui::Ui, icon: Icon, tooltip: &str, enabled: bool) -> eg
         );
     };
     match icon {
+        Icon::NewFile => {
+            box_at(3.0, 1.0, 10.0, 14.0);
+            line((5.0, 8.0), (11.0, 8.0));
+            line((8.0, 5.0), (8.0, 11.0));
+        }
+        Icon::Copy => {
+            box_at(1.0, 1.0, 9.0, 10.0);
+            box_at(5.0, 5.0, 9.0, 10.0);
+        }
+        Icon::Book => {
+            box_at(1.0, 2.0, 14.0, 12.0);
+            line((8.0, 2.0), (8.0, 14.0));
+            line((3.0, 5.0), (6.0, 5.0));
+            line((10.0, 5.0), (13.0, 5.0));
+        }
         Icon::Close => {
             line((4.0, 4.0), (12.0, 12.0));
             line((12.0, 4.0), (4.0, 12.0));
@@ -66,6 +85,7 @@ pub fn button(ui: &mut egui::Ui, icon: Icon, tooltip: &str, enabled: bool) -> eg
             line((5.0, 2.0), (5.0, 14.0));
             line((11.0, 2.0), (11.0, 14.0));
         }
+        Icon::Stop => box_at(3.0, 3.0, 10.0, 10.0),
         Icon::PopOut => {
             box_at(1.0, 5.0, 10.0, 10.0);
             line((7.0, 9.0), (14.0, 2.0));

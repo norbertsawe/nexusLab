@@ -155,7 +155,12 @@ commands `clc`, `pwd`, `cd folder`, and `run file` manage the workbench.
 Figures accept `figure(n)`, `plot(y)`, `plot(x,y)`, `scatter(x,y)`, `bar(y)`,
 `hold('on')`, `grid('off')`, `title('...')`, `xlabel('...')`, and `ylabel('...')`.
 `close all` clears figures. `A(r,c)` and `A(n)` provide scalar 1-based indexing;
-linear indexing and `reshape` use column-major order.
+linear indexing and `reshape` use column-major order. Version 0.4 also supports
+`A(:,2)`, `A(1:end)`, vector subscripts, indexed assignment, `eig`, `pinv`,
+integer matrix powers, right matrix division, and rectangular constructors.
+Open **Tutorial** for NexusAcademy and runnable examples. See the
+[compatibility reference](compatibility.md) for exact semantics and migration
+notes.
 
 v0.3 DSP functions: `stats(x)`, `median(x)`, `rms(x)`, `ptp(x)`,
 `psd(x, sample_rate, segment_length)`, `butter_lowpass(order, cutoff, fs)`,

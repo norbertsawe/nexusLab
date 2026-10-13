@@ -16,7 +16,10 @@ variables, design a filter, and plot the results in the same workspace.
 - **Write and run scripts.** Use the tabbed editor or command window, with
   syntax highlighting, completion, command history, and execution timing.
 - **Work with data.** Import CSV files, edit arrays, solve linear systems, fit
-  polynomials, and save numerical workspaces as `.nxw` files.
+  polynomials, calculate eigenvalues and pseudoinverses, and save numerical
+  workspaces as `.nxw` files.
+- **Learn while working.** NexusAcademy includes guided numerical and DSP
+  lessons with syntax-highlighted examples you can run directly in your workspace.
 - **Analyze signals.** Calculate FFTs and Welch power spectra, design FIR and
   Butterworth IIR filters, and inspect statistical summaries.
 - **Explore results.** Pan and zoom plots, read coordinates with the data
@@ -28,8 +31,9 @@ variables, design a filter, and plot the results in the same workspace.
 
 ## Download
 
-The current version is **v0.3.0 Pro**. Windows 10/11 x64 is the primary desktop
-platform.
+The published portable release is **v0.3.0 Pro**. The source tree contains the
+**v0.4.0** update with expanded matrix operations and NexusAcademy.
+Windows 10/11 x64 is the primary desktop platform.
 
 Download the portable Windows package from [Releases](https://github.com/norbertsawe/nexusLab/releases).
 Extract it and run `nexuslab.exe`. The package includes example scripts and a
@@ -78,6 +82,13 @@ plot(t, y)
 
 Use **Tools** for filter design, spectral analysis, and statistics.
 **Live Scope** starts the simulated source when no hardware is connected.
+Open **Tutorial** for NexusAcademy or use **Help → NexusAcademy**.
+
+![NexusAcademy tutorials in dark mode](docs/images/academy-dark.png)
+
+NexusLab supports a numerical subset of MATLAB-style syntax. See the
+[compatibility reference](docs/compatibility.md) for supported indexing,
+matrix operations, and differences from GNU Octave.
 
 | Shortcut | Action |
 | --- | --- |

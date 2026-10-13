@@ -56,6 +56,8 @@ const BUILTINS: &[&str] = &[
     "sort",
     "inv",
     "det",
+    "eig",
+    "pinv",
     "solve",
     "size",
     "length",

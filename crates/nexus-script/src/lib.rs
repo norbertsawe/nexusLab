@@ -1,4 +1,5 @@
 //! Small MATLAB-style AST interpreter plus a resource-bounded Rhai engine.
+mod indexing;
 pub mod workspace;
 use nexus_core::{fft, ifft, window, Generator, Matrix, Window};
 use serde::{Deserialize, Serialize};
@@ -11,13 +12,16 @@ const MAX_ELEMENTS: usize = 1_000_000;
 pub enum Value {
     Real(Matrix),
     Complex(Vec<[f64; 2]>),
+    ComplexColumn(Vec<[f64; 2]>),
     Text(String),
 }
 impl Value {
     pub fn numeric_samples(&self) -> Result<Vec<f64>, ScriptError> {
         match self {
             Self::Real(m) => Ok(m.data.clone()),
-            Self::Complex(v) => Ok(v.iter().map(|v| v[0].hypot(v[1])).collect()),
+            Self::Complex(v) | Self::ComplexColumn(v) => {
+                Ok(v.iter().map(|v| v[0].hypot(v[1])).collect())
+            }
             Self::Text(_) => Err(ScriptError::Eval("numeric array required".into())),
         }
     }
@@ -42,7 +46,7 @@ impl Value {
                 }
                 lines.join("\n")
             }
-            Self::Complex(v) => v
+            Self::Complex(v) | Self::ComplexColumn(v) => v
                 .iter()
                 .take(8)
                 .map(|p| format!("{:.6} {:+.6}i", p[0], p[1]))
@@ -68,13 +72,14 @@ impl Value {
         match self {
             Self::Real(m) => (m.rows, m.cols),
             Self::Complex(v) => (1, v.len()),
+            Self::ComplexColumn(v) => (v.len(), 1),
             Self::Text(s) => (1, s.len()),
         }
     }
     pub fn bytes(&self) -> usize {
         match self {
             Self::Real(m) => m.data.len() * 8,
-            Self::Complex(v) => v.len() * 16,
+            Self::Complex(v) | Self::ComplexColumn(v) => v.len() * 16,
             Self::Text(s) => s.len(),
         }
     }
@@ -90,7 +95,7 @@ impl Value {
                     .join(", ");
                 format!("[{values}{}]", if m.data.len() > 6 { ", …" } else { "" })
             }
-            Self::Complex(v) => format!("{} complex samples", v.len()),
+            Self::Complex(v) | Self::ComplexColumn(v) => format!("{} complex samples", v.len()),
             Self::Text(s) => s.clone(),
         }
     }
@@ -124,6 +129,7 @@ fn lex(source: &str) -> Result<Vec<Token>, ScriptError> {
     let chars: Vec<_> = source.chars().collect();
     let mut i = 0;
     let mut out = Vec::new();
+    let mut delimiters = Vec::new();
     while i < chars.len() {
         let c = chars[i];
         if c == '%' || (c == '/' && chars.get(i + 1) == Some(&'/')) {
@@ -218,9 +224,30 @@ fn lex(source: &str) -> Result<Vec<Token>, ScriptError> {
             i += 2;
             continue;
         }
+        // In a matrix literal, whitespace before an attached sign starts a new
+        // element: [1 -2] differs from [1 - 2] and [1-2]. Parenthesized expressions
+        // retain normal arithmetic regardless of surrounding matrix whitespace.
+        if matches!(c, '+' | '-')
+            && delimiters.last() == Some(&'[')
+            && i > 0
+            && chars[i - 1].is_whitespace()
+            && chars.get(i + 1).is_some_and(|c| !c.is_whitespace())
+            && matches!(
+                out.last(),
+                Some(Token::Number(_) | Token::Ident(_) | Token::Symbol(')' | ']' | '\''))
+            )
+        {
+            out.push(Token::Symbol(','));
+        }
         if "+-*/^\\".contains(c) {
             out.push(Token::Op(c.to_string()));
         } else if "()[],;:='".contains(c) {
+            if matches!(c, '(' | '[') {
+                delimiters.push(c);
+            }
+            if matches!(c, ')' | ']') {
+                delimiters.pop();
+            }
             out.push(Token::Symbol(c));
         } else {
             return Err(ScriptError::Parse(format!("unexpected character {c}")));
@@ -237,6 +264,7 @@ fn lex(source: &str) -> Result<Vec<Token>, ScriptError> {
 }
 #[derive(Debug)]
 enum Expr {
+    AllIndex,
     Number(f64),
     Name(String),
     Text(String),
@@ -296,6 +324,7 @@ impl Parser {
         let mut lhs = match self.next() {
             Token::Number(n) => Expr::Number(n),
             Token::Text(t) => Expr::Text(t),
+            Token::Symbol(':') => Expr::AllIndex,
             Token::Ident(n) => {
                 if self.eat('(') {
                     let mut args = Vec::new();
@@ -424,7 +453,7 @@ impl Figure {
         }
     }
 }
-pub const HELP:&str="NexusLab command window\n\nWorkspace: who, whos, clear, clear name\nMath: sin, cos, sqrt, exp, log, log10, abs, floor, ceil, round\nArrays: size, length, zeros, ones, eye, diag, reshape, transpose\nStatistics: stats, mean, median, std, rms, ptp, sum, min, max, diff, cumsum, sort, norm\nLinear algebra: inv, det, solve, A * B, A \\ b\nRegression: polyfit(x,y,degree), polyval(coefficients,x)\nDSP: fft, ifft, psd(x,fs,segment), freqz(coeff,fs), hann, fir_lowpass, filter(x,taps), butter_lowpass(order,cutoff,fs), butter_highpass, butter_bandpass, sosfilt(x,sos), iir_lowpass\nFigures: figure(), plot(y), plot(x,y), scatter(x,y), bar(x,y)\nStyling: title(\"text\"), xlabel(\"text\"), ylabel(\"text\"), hold on, hold off\nIndexing: A(row,col), v(index) — indices start at 1\n\nUse semicolons to suppress output. Use rhai: for loops and conditionals.\nDesktop commands: clc, pwd, cd folder, run file.nx";
+pub const HELP:&str="NexusLab command window\n\nWorkspace: who, whos, clear, clear name\nMath: sin, cos, sqrt, exp, log, log10, abs, floor, ceil, round\nArrays: size, length, zeros, ones, eye, diag, reshape, transpose\nStatistics: stats, mean, median, std, rms, ptp, sum, min, max, diff, cumsum, sort, norm\nLinear algebra: inv, det, eig, pinv(A), pinv(A,tolerance), solve, A^n, A / B, A * B, A \\ b\nRegression: polyfit(x,y,degree), polyval(coefficients,x)\nDSP: fft, ifft, psd(x,fs,segment), freqz(coeff,fs), hann, fir_lowpass, filter(x,taps), butter_lowpass(order,cutoff,fs), butter_highpass, butter_bandpass, sosfilt(x,sos), iir_lowpass\nFigures: figure(), plot(y), plot(x,y), scatter(x,y), bar(x,y)\nStyling: title(\"text\"), xlabel(\"text\"), ylabel(\"text\"), hold on, hold off\nIndexing: A(row,col), A(:,2), A(1:end), A(:), A(indices)=values, v(index) — indices start at 1\n\nUse semicolons to suppress output. Use rhai: for loops and conditionals.\nDesktop commands: clc, pwd, cd folder, run file.nx";
 
 pub struct Session {
     pub variables: BTreeMap<String, Value>,
@@ -433,6 +462,7 @@ pub struct Session {
     scope: rhai::Scope<'static>,
     rng: Generator,
     eval_depth: usize,
+    index_limit: Option<usize>,
     printed: std::sync::Arc<std::sync::Mutex<String>>,
     pub figures: BTreeMap<u32, Figure>,
     current_figure: u32,
@@ -502,7 +532,7 @@ impl Session {
                     let (r, c) = value.shape();
                     let kind = match value {
                         Value::Real(_) => "f64",
-                        Value::Complex(_) => "c128",
+                        Value::Complex(_) | Value::ComplexColumn(_) => "c128",
                         Value::Text(_) => "text",
                     };
                     text.push_str(&format!(
@@ -603,6 +633,7 @@ impl Session {
             scope: rhai::Scope::new(),
             rng: Generator::new(128000.0),
             eval_depth: 0,
+            index_limit: None,
             printed,
             figures: BTreeMap::new(),
             current_figure: 1,
@@ -652,18 +683,22 @@ impl Session {
                 if p.eat(';') || p.eat('\n') {
                     continue;
                 }
-                let name = if let Token::Ident(n) = p.token().clone() {
-                    if p.tokens.get(p.at + 1) == Some(&Token::Symbol('=')) {
-                        p.next();
-                        p.next();
-                        Some(n)
-                    } else {
-                        None
-                    }
+                let first = p.expr(0)?;
+                let assignment = p.eat('=');
+                let (target, e) = if assignment {
+                    (Some(first), p.expr(0)?)
                 } else {
-                    None
+                    (None, first)
                 };
-                let e = p.expr(0)?;
+                let name = target
+                    .as_ref()
+                    .map(|target| match target {
+                        Expr::Name(n) | Expr::Call(n, _) => Ok(n.clone()),
+                        _ => Err(ScriptError::Parse(
+                            "assignment requires a variable or indexed variable".into(),
+                        )),
+                    })
+                    .transpose()?;
                 let suppressed = p.eat(';');
                 if p.token() != &Token::End && !suppressed && !p.eat('\n') {
                     return Err(ScriptError::Parse("expected statement separator".into()));
@@ -687,7 +722,11 @@ impl Session {
                     if n == "pi" {
                         return Err(ScriptError::Eval("pi is a constant".into()));
                     }
-                    self.variables.insert(n, last.clone());
+                    if let Some(Expr::Call(_, indices)) = target {
+                        self.assign_indices(&n, &indices, &last)?;
+                    } else {
+                        self.variables.insert(n, last.clone());
+                    }
                 }
             }
             self.variables.insert("ans".into(), last.clone());
@@ -746,6 +785,19 @@ impl Session {
     }
     fn eval_inner(&mut self, e: &Expr) -> Result<Value, ScriptError> {
         Ok(match e {
+            Expr::AllIndex => {
+                let limit = self
+                    .index_limit
+                    .ok_or_else(|| ScriptError::Eval("bare : is only valid in an index".into()))?;
+                Value::Real(Matrix::new(
+                    limit,
+                    1,
+                    (1..=limit).map(|i| i as f64).collect(),
+                )?)
+            }
+            Expr::Name(n) if n == "end" && self.index_limit.is_some() => {
+                Value::Real(Matrix::scalar(self.index_limit.unwrap() as f64))
+            }
             Expr::Number(n) => Value::Real(Matrix::scalar(*n)),
             Expr::Text(s) => Value::Text(s.clone()),
             Expr::Name(n) => self
@@ -754,7 +806,18 @@ impl Session {
                 .cloned()
                 .ok_or_else(|| ScriptError::Eval(format!("unknown variable '{n}'")))?,
             Expr::Unary(e) => Value::Real(self.eval(e)?.real()?.map(|x| -x)),
-            Expr::Transpose(e) => Value::Real(self.eval(e)?.real()?.transpose()),
+            Expr::Transpose(e) => match self.eval(e)? {
+                Value::Real(m) => Value::Real(m.transpose()),
+                Value::Complex(v) => {
+                    Value::ComplexColumn(v.into_iter().map(|[re, im]| [re, -im]).collect())
+                }
+                Value::ComplexColumn(v) => {
+                    Value::Complex(v.into_iter().map(|[re, im]| [re, -im]).collect())
+                }
+                Value::Text(_) => {
+                    return Err(ScriptError::Eval("numeric transpose required".into()))
+                }
+            },
             Expr::Binary(op, a, b) => {
                 let a = self.eval(a)?;
                 let b = self.eval(b)?;
@@ -771,10 +834,17 @@ impl Session {
                         a.matmul(b)?
                     }
                     ".*" => a.elementwise(b, |a, b| a * b)?,
-                    "/" | "./" => a.elementwise(b, |a, b| a / b)?,
-                    "^" | ".^" => a.elementwise(b, f64::powf)?,
+                    "./" => a.elementwise(b, |a, b| a / b)?,
+                    "/" if b.data.len() == 1 => a.elementwise(b, |a, b| a / b)?,
+                    "/" => b.transpose().solve(&a.transpose())?.transpose(),
+                    ".^" => a.elementwise(b, f64::powf)?,
+                    "^" if b.data.len() == 1 => a.power(b.data[0])?,
+                    "^" => return Err(ScriptError::Eval(
+                        "matrix power requires a scalar exponent; use .^ for element-wise powers"
+                            .into(),
+                    )),
                     "\\" => {
-                        if a.rows > 256 {
+                        if a.rows > 256 || a.cols > 256 || b.cols > 256 {
                             return Err(ScriptError::Eval("solve dimension limit is 256".into()));
                         }
                         a.solve(b)?
@@ -836,6 +906,9 @@ impl Session {
                 Value::Real(Matrix::new(rows.len(), cols.unwrap_or(0), data)?)
             }
             Expr::Call(name, args) => {
+                if let Some(Value::Real(matrix)) = self.variables.get(name).cloned() {
+                    return self.read_indices(&matrix, args);
+                }
                 let args = args
                     .iter()
                     .map(|e| self.eval(e))
@@ -896,6 +969,20 @@ impl Session {
                 }
             }
             "help" => 0,
+            "pinv" => {
+                if args.len() == 2 {
+                    2
+                } else {
+                    1
+                }
+            }
+            "zeros" | "ones" | "randn" | "eye" | "size" => {
+                if args.len() == 2 {
+                    2
+                } else {
+                    1
+                }
+            }
             "reshape" | "polyfit" => 3,
             "polyval" | "scatter" | "bar" | "row" | "column" => 2,
             "linspace" | "fir_lowpass" | "fir_highpass" => 3,
@@ -912,6 +999,23 @@ impl Session {
             )));
         }
         Ok(match name {
+            "eig" => {
+                let values = arg(0)?.real()?.eigenvalues()?;
+                if values.iter().all(|v| v.im == 0.0) {
+                    Value::Real(Matrix::new(
+                        values.len(),
+                        1,
+                        values.iter().map(|v| v.re).collect(),
+                    )?)
+                } else {
+                    Value::ComplexColumn(values.iter().map(|v| [v.re, v.im]).collect())
+                }
+            }
+            "pinv" => Value::Real(
+                arg(0)?
+                    .real()?
+                    .pseudoinverse(args.get(1).map(Value::scalar).transpose()?)?,
+            ),
             "stats" | "median" | "rms" | "ptp" => {
                 let s = nexus_core::statistics(&arg(0)?.numeric_samples()?)?;
                 if name == "stats" {
@@ -995,12 +1099,14 @@ impl Session {
             }
             "sin" | "cos" | "tan" | "sqrt" | "exp" | "log" | "log10" | "floor" | "ceil"
             | "round" | "abs" => {
-                if name == "abs" {
-                    if let Value::Complex(v) = arg(0)? {
-                        return Ok(Value::Real(Matrix::vector(
-                            v.iter().map(|v| v[0].hypot(v[1])).collect(),
-                        )));
-                    }
+                if name == "abs" && matches!(arg(0)?, Value::Complex(_) | Value::ComplexColumn(_)) {
+                    let value = arg(0)?;
+                    let (rows, cols) = value.shape();
+                    return Ok(Value::Real(Matrix::new(
+                        rows,
+                        cols,
+                        value.numeric_samples()?,
+                    )?));
                 }
                 let f: fn(f64) -> f64 = match name {
                     "sin" => f64::sin,
@@ -1024,7 +1130,7 @@ impl Session {
                     .collect(),
             ),
             "ifft" => {
-                let Value::Complex(v) = arg(0)? else {
+                let (Value::Complex(v) | Value::ComplexColumn(v)) = arg(0)? else {
                     return Err(ScriptError::Eval("ifft requires complex spectrum".into()));
                 };
                 Value::Real(Matrix::vector(
@@ -1064,15 +1170,20 @@ impl Session {
                 Value::Real(Matrix::scalar(m.determinant()?))
             }
             "eye" => {
-                let n = count(arg(0)?.scalar()?)?;
-                if n.saturating_mul(n) > MAX_ELEMENTS {
+                let rows = count(arg(0)?.scalar()?)?;
+                let cols = if args.len() == 2 {
+                    count(arg(1)?.scalar()?)?
+                } else {
+                    rows
+                };
+                if rows.saturating_mul(cols) > MAX_ELEMENTS {
                     return Err(ScriptError::Eval("eye exceeds array size limit".into()));
                 }
                 Value::Real(Matrix::new(
-                    n,
-                    n,
-                    (0..n * n)
-                        .map(|i| if i / n == i % n { 1.0 } else { 0.0 })
+                    rows,
+                    cols,
+                    (0..rows * cols)
+                        .map(|i| if i / cols == i % cols { 1.0 } else { 0.0 })
                         .collect(),
                 )?)
             }
@@ -1148,6 +1259,17 @@ impl Session {
             }
             "size" => {
                 let (r, c) = arg(0)?.shape();
+                if args.len() == 2 {
+                    let dim = count(arg(1)?.scalar()?)?;
+                    if dim == 0 {
+                        return Err(ScriptError::Eval("size dimension begins at 1".into()));
+                    }
+                    return Ok(Value::Real(Matrix::scalar(match dim {
+                        1 => r,
+                        2 => c,
+                        _ => 1,
+                    } as f64)));
+                }
                 Value::Real(Matrix::vector(vec![r as f64, c as f64]))
             }
             "length" => Value::Real(Matrix::scalar(
@@ -1221,10 +1343,13 @@ impl Session {
             }
             "zeros" | "ones" | "randn" => {
                 let size = arg(0)?.real()?;
-                let (r, c) = if size.data.len() == 2 {
+                let (r, c) = if args.len() == 2 {
+                    (count(arg(0)?.scalar()?)?, count(arg(1)?.scalar()?)?)
+                } else if size.data.len() == 2 {
                     (count(size.data[0])?, count(size.data[1])?)
                 } else {
-                    (1, count(arg(0)?.scalar()?)?)
+                    let n = count(arg(0)?.scalar()?)?;
+                    (n, n)
                 };
                 if r.saturating_mul(c) > MAX_ELEMENTS {
                     return Err(ScriptError::Eval("array size limit reached".into()));
@@ -1442,6 +1567,44 @@ fn from_dynamic(v: rhai::Dynamic) -> Option<Value> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn octave_style_algebra_and_constructor_semantics() {
+        let mut s = Session::new();
+        s.evaluate("A=[1 -2;0 1]; square=A^2; elementwise=A.^2; inverse=A^-1; identity=A/A; Z=zeros(3); O=ones(2,3); R=randn([2 3]); E=eye(2,3); rows=size(E,1); columns=size(E,2); values=eig(A); P=pinv([1 2;2 4],0.01)").unwrap();
+        assert_eq!(
+            s.variables["square"].real().unwrap().data,
+            vec![1., -4., 0., 1.]
+        );
+        assert_eq!(
+            s.variables["elementwise"].real().unwrap().data,
+            vec![1., 4., 0., 1.]
+        );
+        assert_eq!(s.variables["Z"].shape(), (3, 3));
+        assert_eq!(s.variables["O"].shape(), (2, 3));
+        assert_eq!(s.variables["R"].shape(), (2, 3));
+        assert_eq!(
+            s.variables["E"].real().unwrap().data,
+            vec![1., 0., 0., 0., 1., 0.]
+        );
+        assert_eq!(s.variables["values"].shape(), (2, 1));
+        s.evaluate(
+            "rotation=[0 -1;1 0]; lambda=eig(rotation); conjugated=lambda'; magnitudes=abs(lambda)",
+        )
+        .unwrap();
+        assert_eq!(s.variables["lambda"].shape(), (2, 1));
+        assert_eq!(s.variables["conjugated"].shape(), (1, 2));
+        assert_eq!(s.variables["magnitudes"].real().unwrap().data, vec![1., 1.]);
+        assert!(s.evaluate("pinv(A,-1)").is_err());
+        assert!(s.evaluate("A^0.5").is_err());
+        assert!(s
+            .evaluate("polyfit([1e200 2e200 3e200],[1 2 3],2)")
+            .is_err());
+        assert_eq!(s.evaluate("[1 - 2]").unwrap().value.scalar().unwrap(), -1.);
+        assert_eq!(
+            s.evaluate("[(1 -2) 3]").unwrap().value.real().unwrap().data,
+            vec![-1., 3.]
+        );
+    }
     #[test]
     fn advanced_dsp_bindings_validate_and_share_results() {
         let mut session = Session::new();

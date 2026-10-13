@@ -28,7 +28,7 @@ impl NexusApp {
                         if ui.button("Preferences...     Ctrl+,").clicked() { self.preferences_open = true; ui.close_menu(); }
                     });
                     ui.menu_button("View", |ui| {
-                        for (view, title) in [(View::Workbench,"Script Editor"), (View::Command,"Command Window"), (View::Figures,"Figures"), (View::Variables,"Variable Editor"), (View::Scope,"Live Scope")] {
+                        for (view, title) in [(View::Workbench,"Script Editor"), (View::Command,"Command Window"), (View::Figures,"Figures"), (View::Variables,"Variable Editor"), (View::Scope,"Live Scope"), (View::Tutorial,"Tutorial")] {
                             if ui.selectable_label(self.view == view, title).clicked() { self.set_view(view); ui.close_menu(); }
                         }
                         ui.separator();
@@ -66,35 +66,46 @@ impl NexusApp {
                     });
                     ui.menu_button("Window", |ui| {
                         for panel in Panel::all() {
-                            if ui.button(format!("{} {}", if self.closed_panels.contains(&panel) { "Open" } else if self.detached.contains(&panel) { "Dock" } else { "Detach" }, panel.title())).clicked() {
+                            let closed=self.closed_panels.contains(&panel);
+                            let detached=self.detached.contains(&panel);
+                            let clicked=ui.horizontal(|ui| {
+                                let icon=if closed {crate::icons::Icon::Expand} else if detached {crate::icons::Icon::Dock} else {crate::icons::Icon::PopOut};
+                                let tip=if closed {"Reopen panel"} else if detached {"Return panel to main window"} else {"Open panel in a separate window"};
+                                let action=crate::icons::button(ui,icon,tip,true).clicked();
+                                ui.selectable_label(detached,panel.title()).on_hover_text(tip).clicked() || action
+                            }).inner;
+                            if clicked {
                                 if self.closed_panels.contains(&panel) { self.open_panel(panel); } else if self.detached.contains(&panel) { self.dock_panel(ctx, panel); } else { self.detach_panel(panel); }
                                 ui.close_menu();
                             }
                         }
                         ui.separator();
-                        if ui.button("Dock all panels").clicked() { for panel in self.detached.clone() { self.dock_panel(ctx, panel); } ui.close_menu(); }
+                        if ui.button("Return all panels to main window").clicked() { for panel in self.detached.clone() { self.dock_panel(ctx, panel); } ui.close_menu(); }
                         if ui.button("Close all panels").clicked() { self.close_all_panels(ctx);ui.close_menu(); }
                     });
                     ui.menu_button("Help", |ui| {
                         if ui.button("About NexusLab").clicked() { self.about_open=true;ui.close_menu(); }
                         if ui.button("Commands and keyboard shortcuts").clicked() { self.set_view(View::Help); ui.close_menu(); }
+                        if ui.button("NexusAcademy — Tutorials and reference").clicked() { self.set_view(View::Tutorial); ui.close_menu(); }
                     });
                 });
                 if self.preferences.show_toolbar && self.workbench_visible() {
                 ui.separator();
                 ui.horizontal(|ui| {
-                    if ui.button("New").clicked() { self.new_document("untitled.nx", "", false); }
-                    if ui.button("Open").clicked() { self.open_dialog(); }
-                    if ui.button("Save").clicked() { self.save_document(false); }
+                    if crate::icons::button(ui, crate::icons::Icon::NewFile,"New script (Ctrl+N)",true).clicked() { self.new_document("untitled.nx", "", false); }
+                    if crate::icons::button(ui, crate::icons::Icon::Folder,"Open file (Ctrl+O)",true).clicked() { self.open_dialog(); }
+                    if crate::icons::button(ui, crate::icons::Icon::Save,"Save script (Ctrl+S)",true).clicked() { self.save_document(false); }
                     ui.separator();
-                    if ui.add_enabled(!self.busy, egui::Button::new("Run  F5")).clicked() { self.run_editor(false); }
-                    if ui.add_enabled(self.busy && self.evaluating, egui::Button::new("Stop")).clicked() { self.worker.cancel.store(true, Ordering::Relaxed); self.status = "Cancelling...".into(); }
+                    if crate::icons::button(ui,crate::icons::Icon::Run,"Run script (F5)",!self.busy).clicked() { self.run_editor(false); }
+                    if crate::icons::button(ui,crate::icons::Icon::Stop,"Stop execution",self.busy && self.evaluating).clicked() { self.worker.cancel.store(true, Ordering::Relaxed); self.status = "Cancelling...".into(); }
+                    ui.separator();
+                    if crate::icons::button(ui,crate::icons::Icon::Book,"NexusAcademy — tutorials and reference",true).clicked() { self.set_view(View::Tutorial); }
                 });
                 }
                 if self.workbench_visible() {
                 ui.add_space(2.0);
                 ui.horizontal_wrapped(|ui| {
-                    for (view, title) in [(View::Workbench,"Editor"), (View::Command,"Command Window"), (View::Figures,"Figures"), (View::Variables,"Variable Editor"), (View::Scope,"Live Scope")] {
+                    for (view, title) in [(View::Workbench,"Editor"), (View::Command,"Command Window"), (View::Figures,"Figures"), (View::Variables,"Variable Editor"), (View::Scope,"Live Scope"), (View::Tutorial,"Tutorial")] {
                         if Panel::for_view(view).is_some_and(|p|self.closed_panels.contains(&p)) { continue; }
                         let label = if view == View::Figures { format!("{title} ({})", self.figures.len()) } else { title.into() };
                         if ui.selectable_label(self.view == view, label).clicked() { self.set_view(view); }
@@ -337,7 +348,7 @@ impl NexusApp {
                             let (rows, cols) = value.shape();
                             let kind = match value {
                                 Value::Real(_) => "f64",
-                                Value::Complex(_) => "c128",
+                                Value::Complex(_) | Value::ComplexColumn(_) => "c128",
                                 Value::Text(_) => "text",
                             };
                             if ui
@@ -764,7 +775,7 @@ impl NexusApp {
                         }
                     });
             }
-            Value::Complex(values) => {
+            Value::Complex(values) | Value::ComplexColumn(values) => {
                 egui::ScrollArea::vertical()
                     .auto_shrink([false; 2])
                     .show_rows(ui, 25.0, values.len(), |ui, range| {
@@ -803,7 +814,10 @@ impl NexusApp {
             self.submit(Request::Delete(name.clone()));
         }
         if plot {
-            let code = if matches!(self.variables[&name], Value::Complex(_)) {
+            let code = if matches!(
+                self.variables[&name],
+                Value::Complex(_) | Value::ComplexColumn(_)
+            ) {
                 format!("plot(abs({name}))")
             } else if rows > 1 && cols > 1 {
                 format!(

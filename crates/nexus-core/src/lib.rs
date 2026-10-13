@@ -1,5 +1,6 @@
 //! Numerical primitives shared by every frontend. No UI or device dependencies.
 mod advanced;
+mod linalg;
 pub use advanced::{butterworth, filter_sos, sos_response, statistics, welch_psd, Statistics};
 use nalgebra::DMatrix;
 use ndarray::{ArrayD, IxDyn};
@@ -123,10 +124,22 @@ impl Matrix {
         Ok(self.native().determinant())
     }
     pub fn solve(&self, rhs: &Self) -> Result<Self, MathError> {
-        if self.rows != self.cols || self.rows != rhs.rows || self.rows == 0 {
-            return Err(MathError::Shape(
-                "solve requires square A and matching B rows".into(),
+        if self.rows > 256
+            || self.cols > 256
+            || rhs.cols > 256
+            || !self.data.iter().chain(&rhs.data).all(|x| x.is_finite())
+        {
+            return Err(MathError::Parameter(
+                "solve requires finite data with dimensions <= 256".into(),
             ));
+        }
+        if self.rows != rhs.rows || self.rows == 0 {
+            return Err(MathError::Shape(
+                "solve requires nonempty A and matching B rows".into(),
+            ));
+        }
+        if self.rows != self.cols {
+            return self.pseudoinverse(None)?.matmul(rhs);
         }
         self.native()
             .lu()
@@ -150,11 +163,24 @@ pub fn polyfit(x: &[f64], y: &[f64], degree: usize) -> Result<Vec<f64>, MathErro
         ));
     }
     let design = DMatrix::from_fn(x.len(), degree + 1, |r, c| x[r].powi((degree - c) as i32));
+    if !design.iter().all(|x| x.is_finite()) {
+        return Err(MathError::Parameter(
+            "polyfit powers exceed floating-point range; center and scale x".into(),
+        ));
+    }
+    let scale = design.iter().fold(0.0_f64, |m, x| m.max(x.abs()));
     let rhs = DMatrix::from_column_slice(y.len(), 1, y);
-    let result = design
-        .svd(true, true)
-        .solve(&rhs, 1e-12)
+    let svd = nalgebra::linalg::SVD::try_new(design / scale, true, true, f64::EPSILON, 100_000)
+        .ok_or_else(|| MathError::Parameter("polyfit iteration limit reached".into()))?;
+    let cutoff = x.len().max(degree + 1) as f64 * f64::EPSILON * svd.singular_values[0];
+    let result = svd
+        .solve(&(rhs / scale), cutoff)
         .map_err(|e| MathError::Parameter(e.into()))?;
+    if !result.iter().all(|x| x.is_finite()) {
+        return Err(MathError::Parameter(
+            "polyfit coefficients exceed floating-point range".into(),
+        ));
+    }
     Ok(result.column(0).iter().copied().collect())
 }
 pub fn polyval(coefficients: &[f64], x: &[f64]) -> Vec<f64> {

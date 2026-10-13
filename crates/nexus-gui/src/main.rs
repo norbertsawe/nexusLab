@@ -1,6 +1,7 @@
 #![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
 
 mod app;
+mod branding;
 mod diagnostics;
 mod documents;
 mod icons;
@@ -28,6 +29,7 @@ fn main() {
     }
     let mut options = eframe::NativeOptions {
         viewport: eframe::egui::ViewportBuilder::default()
+            .with_icon(branding::window_icon())
             .with_inner_size([1280.0, 760.0])
             .with_min_inner_size([800.0, 560.0])
             .with_maximized(true),
